@@ -1,7 +1,5 @@
-I would like to extract all images from a manga aggregator website for a series that I'm following.
-Use mangakakalot.gg.
-First, enter a title.
-Enter a chapter.
-Go to the title/chapter page.
-Scrape all the image in the page that is not an ad.
-Display the images links in a list.
+todo list:
+call nodriver get cookies and headers
+add helper function that takes in a json and recursively iterates and set all headers.
+call url to retrieve page list 
+retrieve all images
