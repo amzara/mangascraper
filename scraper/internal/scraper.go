@@ -33,7 +33,7 @@ func GetCookies() error {
 		panic(err)
 	}
 
-	resp, err := http.Post("http://localhost:8000/getCfCookies", "application/json", bytes.NewReader(jsonData))
+	resp, err := http.Post("http://nodriver:8000/getCfCookies", "application/json", bytes.NewReader(jsonData))
 
 	if err != nil {
 		return err
@@ -47,7 +47,6 @@ func GetCookies() error {
 		// if err != nil {
 		// 	fmt.Println(err)
 		// }
-		fmt.Println("This is response body")
 
 		var result reqCookies
 
@@ -76,3 +75,7 @@ func GetCookies() error {
 
 //to decode json request(from byte -> meaningful data you can use in form of struct)
 //if you know the struct type, just create a struct object of that type, and use json.NewDEcoder(response.body).Decode(&struct object), the pointer is so you can modify the data of that struct
+//json.Unmarshal is also a thing apparently, to read the encoded json i guess? so i can do get bytes -> jsondecoder? or unmarsha
+//apparently resp.Body is a stream so it can only be read once
+
+//https://gist.github.com/Integralist/3dd0e5c9e9dca246025462035db2868d

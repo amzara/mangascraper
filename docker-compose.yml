@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  nodriver:
+    build: ./nodriver
+    container_name: nodriver
+    ports:
+      - "8000:8000"
+    privileged: true
+    shm_size: '2gb'
+
+  scraper:
+    build: ./scraper
+    container_name: scraper
+    depends_on:
+      - nodriver

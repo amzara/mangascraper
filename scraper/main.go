@@ -6,9 +6,13 @@ import (
 	"fmt"
 	scraper "mangascraper/internal"
 	"os"
+	"time"
 )
 
 func main() {
+
+	fmt.Println("Waiting 5 seconds for API to start...")
+	time.Sleep(5 * time.Second)
 
 	err := scraper.GetCookies()
 
