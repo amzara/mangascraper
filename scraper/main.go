@@ -11,14 +11,16 @@ import (
 
 func main() {
 
-	fmt.Println("Waiting 5 seconds for API to start...")
+	fmt.Println("Waiting 5 seconds for API to start...") //maybe should setup healthcheck, see the other container running or not first
 	time.Sleep(5 * time.Second)
 
-	err := scraper.GetCookies()
+	cookies, err := scraper.GetCookies()
 
 	if err != nil {
 		fmt.Println(err)
 	}
+
+	scraper.DownloadImages(cookies)
 
 	// Get cookies from the local server
 

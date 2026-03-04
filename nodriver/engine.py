@@ -27,11 +27,13 @@ async def stop_browser():
 
 async def get_cookies(wait_time: int = 3) -> Dict[str, Any]:
     """
-    Get cookies from mangakakalot.gg/official
+    Get cookies from mangakakalot.gg
     
     Process:
-    1. First visit: mangakakalot.gg (bypass Cloudflare, assign cookies)
-    2. Second visit: mangakakalot.gg/official (capture cookies)
+    1. Go straight to mangakakalot.gg/manga/hajime-no-ippo (triggers CF)
+    2. Solve Cloudflare challenge
+    3. Capture cookies (cf_clearance is set here)
+    4. Navigate to chapter page
     
     Args:
         wait_time: Time to wait after page load (default: 3 seconds)
@@ -41,32 +43,57 @@ async def get_cookies(wait_time: int = 3) -> Dict[str, Any]:
     """
     global BROWSER
     
-    base_url = "https://www.mangakakalot.gg"
-    official_url = f"{base_url}/manga/hajime-no-ippo"
+    manga_url = "https://www.nelomanga.net/manga/hajime-no-ippo"
+    chapter_url = f"{manga_url}/chapter-1"
     
-    print(f"[SCRAPER] Step 1: Bypassing Cloudflare at {base_url}...")
-    page = await BROWSER.get(base_url)
-    # Note: verify_cf requires opencv-python. Skipping for now.
+    # Step 1: Go straight to manga page - CF challenge triggers here!
+    print(f"[SCRAPER] Step 1: Visiting {chapter_url}...")
+    page = await BROWSER.get(chapter_url)
+    await page.sleep(1)
+    
+    # Solve Cloudflare challenge
+    print(f"[SCRAPER] Solving Cloudflare challenge...")
     # await page.verify_cf()
-    await page.sleep(5)
-    print(f"[SCRAPER] ✓ Cloudflare bypassed")
+    # await page.sleep(2)
+    print(f"[SCRAPER] ✓ Cloudflare challenge passed")
     
-    print(f"[SCRAPER] Step 2: Capturing cookies at {official_url}...")
-    page = await BROWSER.get(official_url)
+    # Capture cookies RIGHT AFTER CF bypass
+    print(f"[SCRAPER] Capturing cookies after CF bypass...")
+    cookies_obj = await page.send(uc.cdp.storage.get_cookies())
+    cookies_after_cf = {cookie.name: cookie.value for cookie in cookies_obj}
     
-    print(f"[SCRAPER] Waiting {wait_time} seconds for page load...")
+    print(f"[SCRAPER] Cookies: {list(cookies_after_cf.keys())}")
+    if 'cf_clearance' in cookies_after_cf:
+        print(f"[SCRAPER] ✓ cf_clearance: {cookies_after_cf['cf_clearance'][:50]}...")
+    else:
+        print(f"[SCRAPER] ⚠ cf_clearance not found")
+    
+    # Step 2: Navigate to chapter page
+    print(f"[SCRAPER] Step 2: Navigating to {chapter_url}...")
+    page = await BROWSER.get(chapter_url)
+    
+    print(f"[SCRAPER] Waiting {wait_time} seconds...")
     await page.sleep(wait_time)
     
+    # Get cookies from chapter page
     cookies_obj = await page.send(uc.cdp.storage.get_cookies())
-    cookies = {cookie.name: cookie.value for cookie in cookies_obj}
+    cookies_chapter = {cookie.name: cookie.value for cookie in cookies_obj}
+    
+    # Merge - prioritize cf_clearance from manga page
+    final_cookies = cookies_chapter.copy()
+    if 'cf_clearance' in cookies_after_cf:
+        final_cookies['cf_clearance'] = cookies_after_cf['cf_clearance']
+        print(f"[SCRAPER] ✓ cf_clearance preserved")
+    
+    print(f"[SCRAPER] Final cookies: {list(final_cookies.keys())}")
     
     response = {
-        "url": official_url,
+        "url": chapter_url,
         "success": True,
-        "cookies": cookies
+        "cookies": final_cookies
     }
     
-    print(f"[SCRAPER] ✓ Captured {len(cookies)} cookies")
+    print(f"[SCRAPER] ✓ Done - {len(final_cookies)} cookies")
     
     return response
 

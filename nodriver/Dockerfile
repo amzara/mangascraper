@@ -1,44 +1,58 @@
-FROM python:3.10-alpine
+FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Install temporary build dependencies
-RUN apk update && apk add --no-cache --virtual .build-deps \
-    alpine-sdk \
-    curl \
+# Install system dependencies for Chromium and OpenCV
+RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
-    unzip \
     gnupg \
-    gcc \
-    musl-dev \
-    libffi-dev \
-    openssl-dev
+    unzip \
+    libgl1 \
+    libglx-mesa0 \
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libdbus-1-3 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libasound2 \
+    libatspi2.0-0 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install runtime dependencies (including Chromium)
-RUN apk add --no-cache \
-    xvfb \
-    nss \
-    freetype \
-    freetype-dev \
-    harfbuzz \
-    ca-certificates \
-    ttf-freefont \
-    chromium
+# Install Chromium
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+    chromium-driver \
+    && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip and install wheel first
+RUN pip install --upgrade pip wheel
 
 # Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Remove build dependencies to reduce image size
-RUN apk del .build-deps
-
 # Copy application code
 COPY . .
 
-# Tell nodriver where Chromium is installed on Alpine
-ENV CHROME_BIN=/usr/bin/chromium-browser
+# Tell nodriver where Chromium is installed
+ENV CHROME_BIN=/usr/bin/chromium
 ENV DISPLAY=:99
 
 EXPOSE 8000
