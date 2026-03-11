@@ -9,43 +9,86 @@ import (
 	"time"
 
 	"github.com/gocolly/colly/v2"
-	uaFake "github.com/lib4u/fake-useragent"
 )
 
 type body struct {
 	Url string
 }
 
-type reqCookies struct {
-	Url     string            `json:"url"`
-	Success bool              `json:"success"`
-	Cookies map[string]string `json:"cookies"`
+// FlareSolverr request/response types
+type flareSolverrRequest struct {
+	Cmd               string `json:"cmd"`
+	URL               string `json:"url"`
+	MaxTimeout        int    `json:"maxTimeout"`
+	ReturnOnlyCookies bool   `json:"returnOnlyCookies"`
 }
 
-func GetCookies() (map[string]string, error) {
-	jsonBody := map[string]string{"url": "https://www.mangakakalot.gg/official"}
-	jsonData, err := json.Marshal(jsonBody)
+type flareSolverrCookie struct {
+	Name   string `json:"name"`
+	Value  string `json:"value"`
+	Domain string `json:"domain"`
+	Path   string `json:"path"`
+}
+
+type flareSolverrSolution struct {
+	Cookies   []flareSolverrCookie `json:"cookies"`
+	UserAgent string               `json:"userAgent"`
+}
+
+type flareSolverrResponse struct {
+	Status    string               `json:"status"`
+	Message   string               `json:"message"`
+	Solution  flareSolverrSolution `json:"solution"`
+}
+
+func GetCookies() (map[string]string, string, error) {
+	// FlareSolverr API request
+	reqBody := flareSolverrRequest{
+		Cmd:               "request.get",
+		URL:               "https://www.mangakakalot.gg/manga/blue-lock",
+		MaxTimeout:        60000,
+		ReturnOnlyCookies: true,
+	}
+	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	resp, err := http.Post("http://nodriver:8000/getCfCookies", "application/json", bytes.NewReader(jsonData))
+	resp, err := http.Post("http://flaresolverr:8191/v1", "application/json", bytes.NewReader(jsonData))
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 200 {
-		var result reqCookies
+		var result flareSolverrResponse
 		err := json.NewDecoder(resp.Body).Decode(&result)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 
-		fmt.Println("Cookies retrieved:", len(result.Cookies))
-		return result.Cookies, nil
+		if result.Status != "ok" {
+			return nil, "", fmt.Errorf("flaresolverr error: %s", result.Message)
+		}
+
+		// Convert cookies to map
+		cookies := make(map[string]string)
+		for _, c := range result.Solution.Cookies {
+			cookies[c.Name] = c.Value
+		}
+
+		// Check for cf_clearance specifically
+		if cfClearance, ok := cookies["cf_clearance"]; ok {
+			fmt.Println("✓ cf_clearance retrieved:", cfClearance[:50]+"...")
+		} else {
+			fmt.Println("⚠ cf_clearance not found in cookies")
+		}
+
+		fmt.Println("Total cookies retrieved:", len(cookies))
+		fmt.Println("User-Agent:", result.Solution.UserAgent)
+		return cookies, result.Solution.UserAgent, nil
 	}
-	return nil, fmt.Errorf("failed to get cookies, status: %d", resp.StatusCode)
+	return nil, "", fmt.Errorf("failed to get cookies, status: %d", resp.StatusCode)
 }
 
 // helper function
@@ -56,7 +99,7 @@ func min(a, b int) int {
 	return b
 }
 
-func DownloadImages(cookies map[string]string) {
+func DownloadImages(cookies map[string]string, userAgent string) {
 	fmt.Println("Starting download with", len(cookies), "cookies...")
 	
 	// Print all cookies received from nodriver
@@ -73,11 +116,10 @@ func DownloadImages(cookies map[string]string) {
 
 	url := "https://www.mangakakalot.gg/manga/hajime-no-ippo/chapter-1"
 
-	// Init fake user-agent
-	ua, err := uaFake.New()
-	if err != nil {
-		fmt.Println("Error creating user agent faker:", err)
-		return
+	// Use the User-Agent from FlareSolverr (MUST match cookies!)
+	// If not provided, fall back to a fixed Chrome UA
+	if userAgent == "" {
+		userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 	}
 
 	// Create collector
@@ -96,10 +138,9 @@ func DownloadImages(cookies map[string]string) {
 	fmt.Println(cookieHeader)
 	fmt.Println("==========================")
 
-	// Set random fake user agent and other headers on every request
+	// Use FlareSolverr's User-Agent (must match cookies!)
 	c.OnRequest(func(r *colly.Request) {
-		// Set fake user agent - use GetRandom() directly on ua
-		r.Headers.Set("User-Agent", ua.GetRandom())
+		r.Headers.Set("User-Agent", userAgent)
 		r.Headers.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
 		r.Headers.Set("Accept-Language", "en-US,en;q=0.9")
 		r.Headers.Set("Accept-Encoding", "gzip, deflate")
@@ -154,7 +195,7 @@ func DownloadImages(cookies map[string]string) {
 	})
 
 	// Visit
-	err = c.Visit(url)
+	err := c.Visit(url)
 	if err != nil {
 		fmt.Println("[VISIT ERROR]", err)
 	}

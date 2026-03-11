@@ -11,16 +11,17 @@ import (
 
 func main() {
 
-	fmt.Println("Waiting 5 seconds for API to start...") //maybe should setup healthcheck, see the other container running or not first
+	fmt.Println("Waiting 5 seconds for FlareSolverr to start...") //maybe should setup healthcheck, see the other container running or not first
 	time.Sleep(5 * time.Second)
 
-	cookies, err := scraper.GetCookies()
+	cookies, userAgent, err := scraper.GetCookies()
 
 	if err != nil {
 		fmt.Println(err)
+		os.Exit(1)
 	}
 
-	scraper.DownloadImages(cookies)
+	scraper.DownloadImages(cookies, userAgent)
 
 	// Get cookies from the local server
 

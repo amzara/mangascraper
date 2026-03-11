@@ -1,16 +1,16 @@
-version: '3.8'
-
 services:
-  nodriver:
-    build: ./nodriver
-    container_name: nodriver
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
     ports:
-      - "8000:8000"
-    privileged: true
-    shm_size: '2gb'
+      - "8191:8191"
+    environment:
+      - LOG_LEVEL=info
+      - HEADLESS=true
+    restart: unless-stopped
 
   scraper:
     build: ./scraper
     container_name: scraper
     depends_on:
-      - nodriver
+      - flaresolverr

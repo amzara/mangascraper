@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     gnupg \
     unzip \
+    xvfb \
     libgl1 \
     libglx-mesa0 \
     libnss3 \
@@ -57,4 +58,5 @@ ENV DISPLAY=:99
 
 EXPOSE 8000
 
-CMD ["python", "main.py"]
+# Start Xvfb virtual display then run app
+CMD Xvfb :99 -screen 0 1920x1080x24 & python main.py
