@@ -11,10 +11,10 @@ services:
 
 
   scraper:
-    build: ./scraper
+    build: ./
     container_name: scraper
     depends_on:
       - flaresolverr
     volumes:
-      - ./downloads:/root/downloads
+      - /data/mangascraper:/root/downloads
   

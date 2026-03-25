@@ -65,7 +65,7 @@ type DownloadJob struct {
 	Slug  string
 }
 
-func downloadWorker(id int, jobs <-chan DownloadJob, wg *sync.WaitGroup) {
+func downloadWorkers(id int, jobs <-chan DownloadJob, wg *sync.WaitGroup) {
 	defer wg.Done() //decrement counter when this job finish
 
 	for job := range jobs {
@@ -75,7 +75,7 @@ func downloadWorker(id int, jobs <-chan DownloadJob, wg *sync.WaitGroup) {
 	}
 }
 
-func GetCookies() {
+func GetCookies() error {
 	// FlareSolverr API request
 	reqBody := flareSolverrRequest{
 		Cmd:               "request.get",
@@ -86,13 +86,14 @@ func GetCookies() {
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
 		fmt.Println("Error on marshaling json")
-		return
+		return err
 	}
 
-	resp, err := http.Post("http://localhost:8191/v1", "application/json", bytes.NewReader(jsonData))
+	resp, err := http.Post("http://flaresolverr:8191/v1", "application/json", bytes.NewReader(jsonData))
 
 	if err != nil {
 		fmt.Printf("err sending POST to fs %s\n", err)
+		return err
 	}
 
 	defer resp.Body.Close()
@@ -123,19 +124,47 @@ func GetCookies() {
 		fmt.Println("Total cookies retrieved:", len(cookies))
 		fmt.Println("User-Agent:", result.Solution.UserAgent)
 		currentUserAgent = result.Solution.UserAgent
-
+		fmt.Println("DONE getting cf_clearance token")
 	}
-
+	return nil
 }
 
 //todo: make thi
+
+func DownloadManga(title string) error {
+
+	err := GetCookies()
+	if err != nil {
+		fmt.Println("Failed to get cf clearance token")
+		return err
+	}
+
+	slugs, err := GetChapterList(title)
+
+	if err != nil {
+		return fmt.Errorf("Failed to get chapter %s\n", err)
+	}
+
+	if len(slugs) == 0 {
+		return fmt.Errorf("No chapter found for %s\n", title)
+	}
+
+	fmt.Printf("Found %d chapters for %s, starting download . . . \n", len(slugs), title)
+
+	BeginJobPool(title, slugs, 8)
+
+	fmt.Println("Finish download %s", title)
+
+	return nil
+
+}
 
 var validImageRegex = regexp.MustCompile(`^\d+\.webp$`)
 
 func DownloadImages(title string, slug string) { //this func should take in title, and list of chapters. then you spawn goroutines to parallel download
 	downloadDir := filepath.Join("downloads", title, slug)
 
-	err := os.MkdirAll(downloadDir, 0755) // Changed := to =
+	err := os.MkdirAll(downloadDir, 0755)
 
 	if err != nil {
 		fmt.Printf("Problem creating dir, %v", err)
@@ -203,6 +232,8 @@ func DownloadImages(title string, slug string) { //this func should take in titl
 		fmt.Printf("Error visiting page: %v\n", err)
 	}
 
+	//on succesful inserts
+
 }
 
 func BeginJobPool(title string, slugs []string, numWorkers int) {
@@ -211,7 +242,7 @@ func BeginJobPool(title string, slugs []string, numWorkers int) {
 
 	for w := 1; w <= numWorkers; w++ {
 		wg.Add(1)
-		go downloadWorker(w, jobs, &wg)
+		go downloadWorkers(w, jobs, &wg)
 	}
 
 	for _, slug := range slugs {
@@ -224,7 +255,7 @@ func BeginJobPool(title string, slugs []string, numWorkers int) {
 
 }
 
-func GetChapterList(title string) []string {
+func GetChapterList(title string) ([]string, error) {
 	var chapterApi string = fmt.Sprintf("https://www.mangakakalot.gg/api/manga/%s/chapters?limit=999", title)
 	fmt.Printf("Chapter API is %s", chapterApi)
 	resp, err := http.Get(chapterApi)
@@ -232,7 +263,7 @@ func GetChapterList(title string) []string {
 		fmt.Println("err getting chapter amount")
 	}
 
-	//add interceptor for 401 unauthorized, call GetCookies and try again?
+	//add interceptor middleware for 401 unauthorized, call GetCookies and try again?
 	//is there any golang native way to intercept status codes? like attaching interceptor to httpClient
 
 	defer resp.Body.Close() //dont forget do this ree amza
@@ -263,7 +294,7 @@ func GetChapterList(title string) []string {
 	}
 
 	fmt.Println(slugs)
-	return slugs
+	return slugs, nil
 
 }
 

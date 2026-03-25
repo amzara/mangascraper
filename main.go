@@ -12,7 +12,7 @@ import (
 
 func healthCheck() bool {
 
-	resp, err := http.Get("http://localhost:8191/health") //change to service name in docker compose
+	resp, err := http.Get("http://flaresolverr:8191/health") //change to service name in docker compose
 	if err != nil {
 		return false
 	}
@@ -46,8 +46,10 @@ func main() {
 	//but i need to ac
 
 	scraper.GetCookies()
-	slugs := scraper.GetChapterList("proof-of-dignity")
-	scraper.BeginJobPool("proof-of-dignity", slugs, 10)
+	scraper.DownloadManga("choujin-x")
+
+	// slugs := scraper.GetChapterList("kagurabachi")
+	// scraper.BeginJobPool("kagurabachi", slugs, 16)
 
 	// scraper.DownloadImages("blue-lock", "chapter-330")
 	fmt.Println("donezo")
