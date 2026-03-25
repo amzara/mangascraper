@@ -3,25 +3,54 @@ package main
 import (
 	// "fmt"
 	// "log"
+	"encoding/json"
 	"fmt"
 	scraper "mangascraper/internal"
-	"os"
+	"net/http"
 	"time"
 )
 
+func healthCheck() bool {
+
+	resp, err := http.Get("http://localhost:8191/health") //change to service name in docker compose
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	var r struct {
+		Status string `json:"status"`
+	}
+	json.NewDecoder(resp.Body).Decode(&r)
+
+	fmt.Println(resp.Body)
+
+	return r.Status == "ok"
+
+}
+
 func main() {
 
-	fmt.Println("Waiting 5 seconds for FlareSolverr to start...") //maybe should setup healthcheck, see the other container running or not first
-	time.Sleep(5 * time.Second)
+	var fsIsAlive = false
 
-	cookies, userAgent, err := scraper.GetCookies()
+	for fsIsAlive == false {
+		if healthCheck() {
+			fsIsAlive = true
+		} else {
+			fmt.Println("Flaresolver not ready, waiting")
+			time.Sleep(10 * time.Second)
+		}
 
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
 	}
 
-	scraper.DownloadImages(cookies, userAgent)
+	//but i need to ac
+
+	scraper.GetCookies()
+	slugs := scraper.GetChapterList("proof-of-dignity")
+	scraper.BeginJobPool("proof-of-dignity", slugs, 10)
+
+	// scraper.DownloadImages("blue-lock", "chapter-330")
+	fmt.Println("donezo")
 
 	// Get cookies from the local server
 
@@ -43,5 +72,7 @@ func main() {
 	// }
 
 	// fmt.Println("Download complete! Check the 'downloads' directory.")
-	os.Exit(0)
+
+	time.Sleep(10 * time.Hour)
+
 }

@@ -9,8 +9,12 @@ services:
       - HEADLESS=true
     restart: unless-stopped
 
+
   scraper:
     build: ./scraper
     container_name: scraper
     depends_on:
       - flaresolverr
+    volumes:
+      - ./downloads:/root/downloads
+  

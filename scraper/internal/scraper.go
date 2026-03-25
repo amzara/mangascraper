@@ -5,8 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
-	"time"
+	"sync"
+	_ "time"
 
 	"github.com/gocolly/colly/v2"
 )
@@ -14,6 +18,9 @@ import (
 type body struct {
 	Url string
 }
+
+var cfClearanceToken string = ""
+var currentUserAgent string = ""
 
 // FlareSolverr request/response types
 type flareSolverrRequest struct {
@@ -36,12 +43,39 @@ type flareSolverrSolution struct {
 }
 
 type flareSolverrResponse struct {
-	Status    string               `json:"status"`
-	Message   string               `json:"message"`
-	Solution  flareSolverrSolution `json:"solution"`
+	Status   string               `json:"status"`
+	Message  string               `json:"message"`
+	Solution flareSolverrSolution `json:"solution"`
 }
 
-func GetCookies() (map[string]string, string, error) {
+type chapterApiResponse struct {
+	Success bool `json:"success"`
+	Data    struct {
+		Pagination struct {
+			Total int `json:"total"`
+		} `json:"pagination"`
+		Chapters []struct {
+			ChapterSlug string `json:"chapter_slug"`
+		} `json:"chapters"`
+	} `json:"data"`
+}
+
+type DownloadJob struct {
+	Title string
+	Slug  string
+}
+
+func downloadWorker(id int, jobs <-chan DownloadJob, wg *sync.WaitGroup) {
+	defer wg.Done() //decrement counter when this job finish
+
+	for job := range jobs {
+		fmt.Printf("Worker %d: processing %s\n", id, job.Slug)
+
+		DownloadImages(job.Title, job.Slug)
+	}
+}
+
+func GetCookies() {
 	// FlareSolverr API request
 	reqBody := flareSolverrRequest{
 		Cmd:               "request.get",
@@ -51,24 +85,23 @@ func GetCookies() (map[string]string, string, error) {
 	}
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, "", err
+		fmt.Println("Error on marshaling json")
+		return
 	}
 
-	resp, err := http.Post("http://flaresolverr:8191/v1", "application/json", bytes.NewReader(jsonData))
+	resp, err := http.Post("http://localhost:8191/v1", "application/json", bytes.NewReader(jsonData))
+
 	if err != nil {
-		return nil, "", err
+		fmt.Printf("err sending POST to fs %s\n", err)
 	}
+
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 200 {
 		var result flareSolverrResponse
 		err := json.NewDecoder(resp.Body).Decode(&result)
 		if err != nil {
-			return nil, "", err
-		}
-
-		if result.Status != "ok" {
-			return nil, "", fmt.Errorf("flaresolverr error: %s", result.Message)
+			fmt.Printf("Error on decoding json %s\n", err)
 		}
 
 		// Convert cookies to map
@@ -80,15 +113,158 @@ func GetCookies() (map[string]string, string, error) {
 		// Check for cf_clearance specifically
 		if cfClearance, ok := cookies["cf_clearance"]; ok {
 			fmt.Println("✓ cf_clearance retrieved:", cfClearance[:50]+"...")
+			cfClearanceToken = cfClearance
+			fmt.Printf("This is declared cfClearance = %s\n", cfClearanceToken)
+
 		} else {
 			fmt.Println("⚠ cf_clearance not found in cookies")
 		}
 
 		fmt.Println("Total cookies retrieved:", len(cookies))
 		fmt.Println("User-Agent:", result.Solution.UserAgent)
-		return cookies, result.Solution.UserAgent, nil
+		currentUserAgent = result.Solution.UserAgent
+
 	}
-	return nil, "", fmt.Errorf("failed to get cookies, status: %d", resp.StatusCode)
+
+}
+
+//todo: make thi
+
+var validImageRegex = regexp.MustCompile(`^\d+\.webp$`)
+
+func DownloadImages(title string, slug string) { //this func should take in title, and list of chapters. then you spawn goroutines to parallel download
+	downloadDir := filepath.Join("downloads", title, slug)
+
+	err := os.MkdirAll(downloadDir, 0755) // Changed := to =
+
+	if err != nil {
+		fmt.Printf("Problem creating dir, %v", err)
+	}
+
+	fmt.Printf("Current clearance token is %s\n", cfClearanceToken)
+
+	c := colly.NewCollector()
+
+	imgCollector := colly.NewCollector()
+
+	imgCollector.OnRequest(func(r *colly.Request) {
+		r.Headers.Set("Referer", "https://www.mangakakalot.gg/")
+		fmt.Println("Downloading:", r.URL.String())
+
+	})
+
+	imgCollector.OnResponse(func(r *colly.Response) {
+		fmt.Println("Response received")
+		filename := filepath.Base(r.Request.URL.Path)
+
+		if !validImageRegex.MatchString(filename) {
+			fmt.Printf("Skipping non-manga image: %s\n", filename)
+			return
+		}
+
+		filepath := filepath.Join(downloadDir, filename)
+		err := r.Save(filepath)
+		if err != nil {
+			fmt.Printf("Error saving image %v\n", err)
+		} else {
+			fmt.Printf("Saved: %s\n", filename)
+		}
+	})
+
+	c.OnRequest(func(r *colly.Request) {
+
+		r.Headers.Set("Cookie", "cf_clearance="+cfClearanceToken)
+		r.Headers.Set("Referer", "https://www.mangakakalot.gg")
+		r.Headers.Set("User-Agent", ""+currentUserAgent)
+
+	})
+
+	c.OnResponse(func(r *colly.Response) {
+
+		contentType := r.Headers.Get("Content-Type")
+
+		if strings.Contains(contentType, "image/webp") {
+			filename := filepath.Base(r.Request.URL.Path)
+			r.Save("downloads/" + filename)
+		}
+
+	})
+
+	c.OnHTML("img", func(e *colly.HTMLElement) {
+		imgURL := e.Attr("src")
+		fmt.Println("Found image:", imgURL)
+		imgCollector.Visit(imgURL)
+	})
+	fmt.Println(slug)
+	fmt.Printf(title)
+	linkToDownloadFrom := fmt.Sprintf("https://www.mangakakalot.gg/manga/%s/%s", title, slug)
+	err = c.Visit(linkToDownloadFrom)
+	if err != nil {
+		fmt.Printf("Error visiting page: %v\n", err)
+	}
+
+}
+
+func BeginJobPool(title string, slugs []string, numWorkers int) {
+	jobs := make(chan DownloadJob, len(slugs))
+	var wg sync.WaitGroup
+
+	for w := 1; w <= numWorkers; w++ {
+		wg.Add(1)
+		go downloadWorker(w, jobs, &wg)
+	}
+
+	for _, slug := range slugs {
+		jobs <- DownloadJob{Title: title, Slug: slug}
+	}
+
+	close(jobs)
+
+	wg.Wait()
+
+}
+
+func GetChapterList(title string) []string {
+	var chapterApi string = fmt.Sprintf("https://www.mangakakalot.gg/api/manga/%s/chapters?limit=999", title)
+	fmt.Printf("Chapter API is %s", chapterApi)
+	resp, err := http.Get(chapterApi)
+	if err != nil {
+		fmt.Println("err getting chapter amount")
+	}
+
+	//add interceptor for 401 unauthorized, call GetCookies and try again?
+	//is there any golang native way to intercept status codes? like attaching interceptor to httpClient
+
+	defer resp.Body.Close() //dont forget do this ree amza
+
+	var clResponse chapterApiResponse
+
+	err = json.NewDecoder(resp.Body).Decode(&clResponse)
+
+	fmt.Printf("Amount of chapter is %d", clResponse.Data.Pagination.Total)
+
+	chapterApiSlug := fmt.Sprintf("https://www.mangakakalot.gg/api/manga/%s/chapters?limit=%d", title, clResponse.Data.Pagination.Total)
+	//redundant, just do limit = -1 LOL
+	resp, err = http.Get(chapterApiSlug)
+
+	defer resp.Body.Close()
+
+	var csResponse chapterApiResponse
+
+	err = json.NewDecoder(resp.Body).Decode(&csResponse)
+
+	if err != nil {
+		fmt.Println("Fail to decode")
+	}
+
+	var slugs []string
+	for _, chapter := range csResponse.Data.Chapters {
+		slugs = append(slugs, chapter.ChapterSlug)
+	}
+
+	fmt.Println(slugs)
+	return slugs
+
 }
 
 // helper function
@@ -97,110 +273,4 @@ func min(a, b int) int {
 		return a
 	}
 	return b
-}
-
-func DownloadImages(cookies map[string]string, userAgent string) {
-	fmt.Println("Starting download with", len(cookies), "cookies...")
-	
-	// Print all cookies received from nodriver
-	fmt.Println("=== COOKIES FROM NODRIVER ===")
-	for name, value := range cookies {
-		// Truncate long values for readability
-		displayValue := value
-		if len(displayValue) > 50 {
-			displayValue = displayValue[:50] + "..."
-		}
-		fmt.Printf("  %s: %s\n", name, displayValue)
-	}
-	fmt.Println("=============================")
-
-	url := "https://www.mangakakalot.gg/manga/hajime-no-ippo/chapter-1"
-
-	// Use the User-Agent from FlareSolverr (MUST match cookies!)
-	// If not provided, fall back to a fixed Chrome UA
-	if userAgent == "" {
-		userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-	}
-
-	// Create collector
-	c := colly.NewCollector(
-		colly.AllowURLRevisit(),
-	)
-
-	// Build cookie header
-	var cookieParts []string
-	for name, value := range cookies {
-		cookieParts = append(cookieParts, fmt.Sprintf("%s=%s", name, value))
-	}
-	cookieHeader := strings.Join(cookieParts, "; ")
-	fmt.Println("Cookie header length:", len(cookieHeader), "bytes")
-	fmt.Println("=== FULL COOKIE HEADER ===")
-	fmt.Println(cookieHeader)
-	fmt.Println("==========================")
-
-	// Use FlareSolverr's User-Agent (must match cookies!)
-	c.OnRequest(func(r *colly.Request) {
-		r.Headers.Set("User-Agent", userAgent)
-		r.Headers.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
-		r.Headers.Set("Accept-Language", "en-US,en;q=0.9")
-		r.Headers.Set("Accept-Encoding", "gzip, deflate")
-		r.Headers.Set("Cache-Control", "max-age=0")
-		r.Headers.Set("Connection", "keep-alive")
-		r.Headers.Set("Referer", "https://www.mangakakalot.gg/")
-		r.Headers.Set("Upgrade-Insecure-Requests", "1")
-		
-		// Set the cookies
-		if cookieHeader != "" {
-			r.Headers.Set("Cookie", cookieHeader)
-		}
-		
-		fmt.Println("[REQUEST] User-Agent:", r.Headers.Get("User-Agent"))
-		fmt.Println("[REQUEST] Visiting:", r.URL.String())
-	})
-
-	c.OnResponse(func(r *colly.Response) {
-		fmt.Printf("[RESPONSE] Status: %d\n", r.StatusCode)
-		
-		if r.StatusCode == 403 {
-			fmt.Println("[RESPONSE] BLOCKED by Cloudflare!")
-		}
-	})
-
-	c.OnError(func(r *colly.Response, err error) {
-		fmt.Printf("[ERROR] %v\n", err)
-		if r != nil {
-			fmt.Printf("[ERROR] Status: %d\n", r.StatusCode)
-		}
-	})
-
-	// Find images
-	c.OnHTML(".container-chapter-reader img", func(e *colly.HTMLElement) {
-		src := e.Attr("src")
-		fmt.Println("[FOUND] Image:", src)
-	})
-
-	// Fallback - find any images
-	c.OnHTML("img", func(e *colly.HTMLElement) {
-		src := e.Attr("src")
-		if src != "" && (strings.Contains(src, "http") || strings.Contains(src, "//")) {
-			fmt.Printf("[DEBUG] img src=%s\n", src)
-		}
-	})
-
-	// Rate limiting
-	c.Limit(&colly.LimitRule{
-		DomainGlob:  "*mangakakalot.gg",
-		Parallelism: 1,
-		Delay:       2 * time.Second,
-	})
-
-	// Visit
-	err := c.Visit(url)
-	if err != nil {
-		fmt.Println("[VISIT ERROR]", err)
-	}
-
-	fmt.Println("Waiting...")
-	c.Wait()
-	fmt.Println("Done!")
 }
