@@ -1,5 +1,7 @@
 package scraper
 
+// This package contains the manga scraping functionality
+
 import (
 	"bytes"
 	"encoding/json"

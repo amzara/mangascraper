@@ -15,6 +15,10 @@ services:
     container_name: scraper
     depends_on:
       - flaresolverr
+    ports:
+      - "8080:8080"
     volumes:
       - /data/mangascraper:/root/downloads
+    environment:
+      - PORT=8080
   
