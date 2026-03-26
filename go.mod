@@ -18,6 +18,7 @@ require (
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/kennygrant/sanitize v1.2.4 // indirect
+	github.com/lib/pq v1.12.0 // indirect
 	github.com/lib4u/fake-useragent v1.0.6 // indirect
 	github.com/nlnwa/whatwg-url v0.6.2 // indirect
 	github.com/playwright-community/playwright-go v0.5200.1 // indirect

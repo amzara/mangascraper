@@ -12,6 +12,8 @@ import (
 	"sync"
 	_ "time"
 
+	"mangascraper/internal/db"
+
 	"github.com/gocolly/colly/v2"
 )
 
@@ -65,13 +67,39 @@ type DownloadJob struct {
 	Slug  string
 }
 
-func downloadWorkers(id int, jobs <-chan DownloadJob, wg *sync.WaitGroup) {
+func downloadWorkers(id int, mangaID int, jobs <-chan DownloadJob, wg *sync.WaitGroup) {
 	defer wg.Done() //decrement counter when this job finish
 
 	for job := range jobs {
 		fmt.Printf("Worker %d: processing %s\n", id, job.Slug)
 
-		DownloadImages(job.Title, job.Slug)
+		// Get chapter ID from database
+		chapter, err := db.GetChapterBySlug(mangaID, job.Slug)
+		if err != nil {
+			fmt.Printf("Worker %d: failed to get chapter %s: %v\n", id, job.Slug, err)
+			continue
+		}
+		if chapter == nil {
+			fmt.Printf("Worker %d: chapter %s not found in database\n", id, job.Slug)
+			continue
+		}
+
+		// Mark chapter as downloading
+		if err := db.MarkChapterDownloading(chapter.ChapterID); err != nil {
+			fmt.Printf("Worker %d: failed to mark chapter as downloading: %v\n", id, err)
+		}
+
+		// Download images and save pages to database
+		err = DownloadImagesWithDB(job.Title, job.Slug, chapter.ChapterID)
+		if err != nil {
+			// Mark chapter as error
+			db.MarkChapterError(chapter.ChapterID, err.Error())
+			fmt.Printf("Worker %d: error downloading %s: %v\n", id, job.Slug, err)
+		} else {
+			// Mark chapter as downloaded
+			db.MarkChapterDownloaded(chapter.ChapterID)
+			fmt.Printf("Worker %d: completed %s\n", id, job.Slug)
+		}
 	}
 }
 
@@ -132,31 +160,36 @@ func GetCookies() error {
 //todo: make thi
 
 func DownloadManga(title string) error {
+	// 1. Save manga to database
+	mangaID, err := db.SaveManga(title, title)
+	if err != nil {
+		return fmt.Errorf("failed to save manga: %w", err)
+	}
+	fmt.Printf("Manga '%s' saved with ID: %d\n", title, mangaID)
 
-	err := GetCookies()
+	err = GetCookies()
 	if err != nil {
 		fmt.Println("Failed to get cf clearance token")
 		return err
 	}
 
-	slugs, err := GetChapterList(title)
-
+	// 2. Get chapter list and save chapters to database
+	slugs, err := GetChapterListWithDB(mangaID, title)
 	if err != nil {
-		return fmt.Errorf("Failed to get chapter %s\n", err)
+		return fmt.Errorf("failed to get chapter list: %w", err)
 	}
 
 	if len(slugs) == 0 {
-		return fmt.Errorf("No chapter found for %s\n", title)
+		return fmt.Errorf("no chapter found for %s", title)
 	}
 
 	fmt.Printf("Found %d chapters for %s, starting download . . . \n", len(slugs), title)
 
-	BeginJobPool(title, slugs, 8)
+	BeginJobPool(title, mangaID, slugs, 8)
 
-	fmt.Println("Finish download %s", title)
+	fmt.Printf("Finish download %s\n", title)
 
 	return nil
-
 }
 
 var validImageRegex = regexp.MustCompile(`^\d+\.webp$`)
@@ -236,13 +269,13 @@ func DownloadImages(title string, slug string) { //this func should take in titl
 
 }
 
-func BeginJobPool(title string, slugs []string, numWorkers int) {
+func BeginJobPool(title string, mangaID int, slugs []string, numWorkers int) {
 	jobs := make(chan DownloadJob, len(slugs))
 	var wg sync.WaitGroup
 
 	for w := 1; w <= numWorkers; w++ {
 		wg.Add(1)
-		go downloadWorkers(w, jobs, &wg)
+		go downloadWorkers(w, mangaID, jobs, &wg)
 	}
 
 	for _, slug := range slugs {
@@ -296,6 +329,118 @@ func GetChapterList(title string) ([]string, error) {
 	fmt.Println(slugs)
 	return slugs, nil
 
+}
+
+// GetChapterListWithDB fetches chapters and saves them to the database
+func GetChapterListWithDB(mangaID int, title string) ([]string, error) {
+	var chapterApi string = fmt.Sprintf("https://www.mangakakalot.gg/api/manga/%s/chapters?limit=999", title)
+	fmt.Printf("Chapter API is %s\n", chapterApi)
+	resp, err := http.Get(chapterApi)
+	if err != nil {
+		return nil, fmt.Errorf("error getting chapter amount: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var clResponse chapterApiResponse
+	if err := json.NewDecoder(resp.Body).Decode(&clResponse); err != nil {
+		return nil, fmt.Errorf("error decoding chapter list: %w", err)
+	}
+
+	fmt.Printf("Amount of chapter is %d\n", clResponse.Data.Pagination.Total)
+
+	chapterApiSlug := fmt.Sprintf("https://www.mangakakalot.gg/api/manga/%s/chapters?limit=%d", title, clResponse.Data.Pagination.Total)
+	resp, err = http.Get(chapterApiSlug)
+	if err != nil {
+		return nil, fmt.Errorf("error getting chapter list: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var csResponse chapterApiResponse
+	if err := json.NewDecoder(resp.Body).Decode(&csResponse); err != nil {
+		return nil, fmt.Errorf("error decoding chapters: %w", err)
+	}
+
+	var slugs []string
+	fmt.Println("Saving chapters to database...")
+	for _, chapter := range csResponse.Data.Chapters {
+		slugs = append(slugs, chapter.ChapterSlug)
+		// Save chapter to database
+		_, err := db.SaveChapter(mangaID, chapter.ChapterSlug)
+		if err != nil {
+			fmt.Printf("Warning: failed to save chapter %s: %v\n", chapter.ChapterSlug, err)
+		}
+	}
+
+	fmt.Printf("Total chapters: %d\n", len(slugs))
+	return slugs, nil
+}
+
+// DownloadImagesWithDB downloads images and saves page records to the database
+func DownloadImagesWithDB(title string, slug string, chapterID int) error {
+	downloadDir := filepath.Join("downloads", title, slug)
+
+	if err := os.MkdirAll(downloadDir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	c := colly.NewCollector()
+	imgCollector := colly.NewCollector()
+
+	imgCollector.OnRequest(func(r *colly.Request) {
+		r.Headers.Set("Referer", "https://www.mangakakalot.gg/")
+	})
+
+	imgCollector.OnResponse(func(r *colly.Response) {
+		filename := filepath.Base(r.Request.URL.Path)
+
+		if !validImageRegex.MatchString(filename) {
+			fmt.Printf("Skipping non-manga image: %s\n", filename)
+			return
+		}
+
+		filepath := filepath.Join(downloadDir, filename)
+		
+		// Save page to database with pending status
+		pageID, err := db.SavePage(chapterID, r.Request.URL.String(), filename)
+		if err != nil {
+			fmt.Printf("Error saving page to DB: %v\n", err)
+			return
+		}
+
+		// Mark page as downloading
+		if err := db.MarkPageDownloading(pageID); err != nil {
+			fmt.Printf("Error marking page as downloading: %v\n", err)
+		}
+
+		// Save the file
+		if err := r.Save(filepath); err != nil {
+			fmt.Printf("Error saving image %v\n", err)
+			// Mark page as error
+			db.MarkPageError(pageID, err.Error())
+		} else {
+			fmt.Printf("Saved: %s\n", filename)
+			// Mark page as downloaded
+			db.MarkPageDownloaded(pageID)
+		}
+	})
+
+	c.OnRequest(func(r *colly.Request) {
+		r.Headers.Set("Cookie", "cf_clearance="+cfClearanceToken)
+		r.Headers.Set("Referer", "https://www.mangakakalot.gg")
+		r.Headers.Set("User-Agent", ""+currentUserAgent)
+	})
+
+	c.OnHTML("img", func(e *colly.HTMLElement) {
+		imgURL := e.Attr("src")
+		imgCollector.Visit(imgURL)
+	})
+
+	linkToDownloadFrom := fmt.Sprintf("https://www.mangakakalot.gg/manga/%s/%s", title, slug)
+	if err := c.Visit(linkToDownloadFrom); err != nil {
+		return fmt.Errorf("error visiting page: %w", err)
+	}
+
+	return nil
 }
 
 // helper function

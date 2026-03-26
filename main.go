@@ -1,10 +1,9 @@
 package main
 
 import (
-	// "fmt"
-	// "log"
 	"encoding/json"
 	"fmt"
+	"mangascraper/internal/db"
 	scraper "mangascraper/internal"
 	"net/http"
 	"time"
@@ -30,6 +29,12 @@ func healthCheck() bool {
 }
 
 func main() {
+	// Initialize database
+	if err := db.InitDB(); err != nil {
+		fmt.Printf("Failed to initialize database: %v\n", err)
+		return
+	}
+	defer db.CloseDB()
 
 	var fsIsAlive = false
 
@@ -42,8 +47,6 @@ func main() {
 		}
 
 	}
-
-	//but i need to ac
 
 	scraper.GetCookies()
 	scraper.DownloadManga("choujin-x")
