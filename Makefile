@@ -17,7 +17,7 @@ DB_NAME     ?= mangascraper
 DB_DSN := "postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable"
 DB_ADMIN_DSN := "postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/postgres?sslmode=disable"
 
-MIGRATIONS_DIR := "./migrations"
+MIGRATIONS_DIR := "./api/migrations"
 
 db-create:
 	psql $(DB_ADMIN_DSN) -tc "SELECT 1 FROM pg_database WHERE datname = '$(DB_NAME)'" | grep -q 1 || \
@@ -40,3 +40,6 @@ migrate-create:
 	goose -dir $(MIGRATIONS_DIR) create $$name sql
 
 reset: db-drop db-create migrate-up
+
+
+//https://dzone.com/articles/goose-as-crucial-tool-for-your-service

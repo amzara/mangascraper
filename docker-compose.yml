@@ -9,16 +9,31 @@ services:
       - HEADLESS=true
     restart: unless-stopped
 
-
   scraper:
-    build: ./
+    build: ./api
     container_name: scraper
     depends_on:
       - flaresolverr
     ports:
-      - "8080:8080"
+      - "8081:8081"
     volumes:
       - /data/mangascraper:/root/downloads
     environment:
-      - PORT=8080
-  
+      - PORT=8081
+      - DB_HOST=host.docker.internal
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=test1ng
+      - DB_NAME=mangascraper
+      - FLARESOLVERR_URL=http://flaresolverr:8191
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  web:
+    build: ./app
+    container_name: mangascraper-web
+    ports:
+      - "8082:80"
+    depends_on:
+      - scraper
+    restart: unless-stopped
