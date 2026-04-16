@@ -1,11 +1,11 @@
 {
-    "name": "mangascraper_web",
-    "short_name": "mangascraper_web",
+    "name": "Manga Scraper",
+    "short_name": "MangaScraper",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#1D1D1F",
+    "theme_color": "#1D1D1F",
+    "description": "Read and manage your manga collection",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

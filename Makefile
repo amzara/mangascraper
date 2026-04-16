@@ -6,12 +6,11 @@ ifneq (,$(wildcard ./.env))
     export
 endif
 
-# put in env
-DB_HOST     ?= localhost
-DB_PORT     ?= 5432
-DB_USER     ?= postgres
+DB_HOST     ?= 
+DB_PORT     ?= 
+DB_USER     ?= 
 DB_PASSWORD ?=
-DB_NAME     ?= mangascraper
+DB_NAME     ?= 
 
 # Build DSN
 DB_DSN := "postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable"
@@ -28,6 +27,12 @@ db-drop:
 
 migrate-up:
 	goose -dir $(MIGRATIONS_DIR) postgres $(DB_DSN) up
+
+migrate-up-one:
+	goose -dir $(MIGRATIONS_DIR) postgres $(DB_DSN) up-by-one
+
+migrate-down-one:
+	goose -dir $(MIGRATIONS_DIR) postgres $(DB_DSN) down
 
 migrate-down:
 	goose -dir $(MIGRATIONS_DIR) postgres $(DB_DSN) down

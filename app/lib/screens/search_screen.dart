@@ -119,18 +119,22 @@ class _SearchScreenState extends State<SearchScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Download Manga?'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Download Manga?',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               manga.name,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
             ),
             const SizedBox(height: 8),
-            Text('Author: ${manga.author}'),
-            Text('Latest: ${manga.chapterLatest}'),
+            Text('Author: ${manga.author}', style: const TextStyle(color: Color(0xFF6E6E73))),
+            Text('Latest: ${manga.chapterLatest}', style: const TextStyle(color: Color(0xFF6E6E73))),
             const SizedBox(height: 16),
             const Text('Do you want to download this manga?'),
           ],
@@ -138,10 +142,15 @@ class _SearchScreenState extends State<SearchScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF6E6E73))),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF1D1D1F),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
             child: const Text('Download'),
           ),
         ],
@@ -160,7 +169,9 @@ class _SearchScreenState extends State<SearchScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Started downloading: ${manga.name}'),
-            backgroundColor: Colors.green,
+            backgroundColor: const Color(0xFF1D1D1F),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
       }
@@ -170,6 +181,8 @@ class _SearchScreenState extends State<SearchScreen> {
           SnackBar(
             content: Text('Error: $e'),
             backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
       }
@@ -179,9 +192,15 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F7),
       appBar: AppBar(
-        title: const Text('Add Manga'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: const Text(
+          'Add Manga',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF1D1D1F),
+        elevation: 0,
       ),
       body: _buildBody(),
     );
@@ -190,19 +209,41 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget _buildBody() {
     // Step 1: Getting token
     if (_isGettingToken) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Getting access token...'),
-            SizedBox(height: 8),
-            Text(
-              'Please wait while we connect to the manga source',
-              style: TextStyle(color: Colors.grey, fontSize: 12),
-            ),
-          ],
+      return Center(
+        child: Container(
+          padding: const EdgeInsets.all(32),
+          margin: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 20,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(strokeWidth: 3),
+              SizedBox(height: 24),
+              Text(
+                'Solving Cloudflare challenge...',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                  color: Color(0xFF1D1D1F),
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Please wait while we connect to the manga source',
+                style: TextStyle(color: Color(0xFF86868B), fontSize: 13),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -210,28 +251,53 @@ class _SearchScreenState extends State<SearchScreen> {
     // Step 2: Token error
     if (!_hasToken) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, color: Colors.red, size: 48),
-            const SizedBox(height: 16),
-            const Text(
-              'Failed to get access token',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _tokenError ?? 'Unknown error',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.grey),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: _getToken,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
-          ],
+        child: Container(
+          padding: const EdgeInsets.all(32),
+          margin: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 20,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 56),
+              const SizedBox(height: 16),
+              const Text(
+                'Failed to get access token',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 18,
+                  color: Color(0xFF1D1D1F),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _tokenError ?? 'Unknown error',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Color(0xFF86868B)),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: _getToken,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Retry'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1D1D1F),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -242,44 +308,61 @@ class _SearchScreenState extends State<SearchScreen> {
         // Success banner
         Container(
           width: double.infinity,
-          color: Colors.green.shade50,
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-          child: Row(
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8F5E9),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Row(
             children: [
-              Icon(Icons.check_circle, color: Colors.green.shade700, size: 16),
-              const SizedBox(width: 8),
+              Icon(Icons.check_circle, color: Color(0xFF4CAF50), size: 18),
+              SizedBox(width: 10),
               Text(
                 'Access token retrieved',
-                style: TextStyle(color: Colors.green.shade700, fontSize: 12),
+                style: TextStyle(
+                  color: Color(0xFF2E7D32),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ],
           ),
         ),
 
         // Search box
-        Padding(
-          padding: const EdgeInsets.all(16),
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
           child: TextField(
             controller: _searchController,
             focusNode: _searchFocusNode,
             onChanged: _onSearchChanged,
             decoration: InputDecoration(
               hintText: 'Search for manga...',
-              prefixIcon: const Icon(Icons.search),
+              hintStyle: const TextStyle(color: Color(0xFF86868B)),
+              prefixIcon: const Icon(Icons.search, color: Color(0xFF86868B)),
               suffixIcon: _searchController.text.isNotEmpty
                   ? IconButton(
-                      icon: const Icon(Icons.clear),
+                      icon: const Icon(Icons.clear, color: Color(0xFF86868B)),
                       onPressed: () {
                         _searchController.clear();
                         _onSearchChanged('');
                       },
                     )
                   : null,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              filled: true,
-              fillColor: Colors.grey[100],
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             ),
           ),
         ),
@@ -287,29 +370,46 @@ class _SearchScreenState extends State<SearchScreen> {
         // Loading indicator
         if (_isLoading)
           const Padding(
-            padding: EdgeInsets.all(16),
-            child: CircularProgressIndicator(),
+            padding: EdgeInsets.all(24),
+            child: CircularProgressIndicator(strokeWidth: 3),
           ),
 
         // Error message
         if (_error != null)
-          Padding(
+          Container(
+            margin: const EdgeInsets.all(16),
             padding: const EdgeInsets.all(16),
-            child: Text(
-              'Error: $_error',
-              style: const TextStyle(color: Colors.red),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFEBEE),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.red, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Error: $_error',
+                    style: const TextStyle(color: Colors.red, fontSize: 13),
+                  ),
+                ),
+              ],
             ),
           ),
 
         // Results count
         if (_searchResults.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
                 '${_searchResults.length} results found',
-                style: TextStyle(color: Colors.grey[600]),
+                style: const TextStyle(
+                  color: Color(0xFF6E6E73),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ),
@@ -319,70 +419,152 @@ class _SearchScreenState extends State<SearchScreen> {
           child: _searchResults.isEmpty
               ? Center(
                   child: _searchController.text.isEmpty
-                      ? const Column(
+                      ? Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.search, size: 64, color: Colors.grey),
-                            SizedBox(height: 16),
-                            Text('Type to search for manga'),
+                            Container(
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.04),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: const Icon(
+                                Icons.search,
+                                size: 48,
+                                color: Color(0xFF86868B),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Type to search for manga',
+                              style: TextStyle(
+                                color: Color(0xFF86868B),
+                                fontSize: 15,
+                              ),
+                            ),
                           ],
                         )
                       : _isLoading
                           ? const SizedBox.shrink()
-                          : const Text('No results found'),
+                          : const Text(
+                              'No results found',
+                              style: TextStyle(
+                                color: Color(0xFF86868B),
+                                fontSize: 15,
+                              ),
+                            ),
                 )
               : ListView.builder(
+                  padding: const EdgeInsets.all(16),
                   itemCount: _searchResults.length,
                   itemBuilder: (context, index) {
                     final manga = _searchResults[index];
-                    return Card(
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 4,
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
-                      child: ListTile(
-                        leading: ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: Image.network(
-                            manga.thumb,
-                            width: 50,
-                            height: 70,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                width: 50,
-                                height: 70,
-                                color: Colors.grey[300],
-                                child: const Icon(Icons.image_not_supported),
-                              );
-                            },
+                      child: Material(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(16),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: () => _showDownloadConfirmDialog(manga),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Image.network(
+                                    manga.thumb,
+                                    width: 56,
+                                    height: 80,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Container(
+                                        width: 56,
+                                        height: 80,
+                                        color: const Color(0xFFF5F5F7),
+                                        child: const Icon(
+                                          Icons.image_not_supported,
+                                          color: Color(0xFF86868B),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        manga.name,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 15,
+                                          color: Color(0xFF1D1D1F),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        manga.author,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: Color(0xFF6E6E73),
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 3,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF5F5F7),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          manga.chapterLatest,
+                                          style: const TextStyle(
+                                            color: Color(0xFF1D1D1F),
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.arrow_forward_ios,
+                                  size: 14,
+                                  color: Color(0xFF86868B),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                        title: Text(
-                          manga.name,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              manga.author,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            Text(
-                              manga.chapterLatest,
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.primary,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                        isThreeLine: true,
-                        onTap: () => _showDownloadConfirmDialog(manga),
                       ),
                     );
                   },

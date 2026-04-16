@@ -2,7 +2,7 @@ package middleware
 
 import "net/http"
 
-// CORS adds CORS headers to allow requests from the Flutter web app
+//cors header
 func CORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Allow requests from any origin (you can restrict this in production)
@@ -19,3 +19,5 @@ func CORS(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+//todo: interceptor middleware

@@ -1,52 +1,39 @@
 package db
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
 	"os"
-	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// DB is the global database connection
-var DB *sql.DB
+var Pool *pgxpool.Pool
 
-// InitDB initializes the database connection
-func InitDB() error {
+func InitDB(ctx context.Context) error {
 	dbHost := getEnv("DB_HOST", "localhost")
 	dbPort := getEnv("DB_PORT", "5432")
-	dbUser := getEnv("DB_USER", "postgres")
+	dbUser := getEnv("DB_USER", "")
 	dbPassword := getEnv("DB_PASSWORD", "")
-	dbName := getEnv("DB_NAME", "mangascraper")
+	dbName := getEnv("DB_NAME", "")
 
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		dbUser, dbPassword, dbHost, dbPort, dbName)
+	connString := fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable", dbUser, dbPassword, dbHost, dbPort, dbName)
 
 	var err error
-	DB, err = sql.Open("postgres", dsn)
+	Pool, err = pgxpool.New(ctx, connString)
 	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return fmt.Errorf("failed to create pool: $v", err)
 	}
 
-	// Configure connection pool
-	DB.SetMaxOpenConns(25)
-	DB.SetMaxIdleConns(5)
-	DB.SetConnMaxLifetime(5 * time.Minute)
-
-	if err := DB.Ping(); err != nil {
-		return fmt.Errorf("failed to ping database: %w", err)
+	if err := Pool.Ping(ctx); err != nil {
+		return fmt.Errorf("Failed to ping db %v", err)
 	}
 
-	fmt.Println("✓ Database connected")
-	return nil
-}
+	fmt.Println("Connected to db")
 
-// CloseDB closes the database connection
-func CloseDB() error {
-	if DB != nil {
-		return DB.Close()
-	}
+	//steps to init db
+	//declare variables (useful for local dev) and create connString
+	//create pgxpool.New to conn
 	return nil
 }
 
@@ -55,4 +42,10 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func CloseDB() {
+	if Pool != nil {
+		Pool.Close()
+	}
 }

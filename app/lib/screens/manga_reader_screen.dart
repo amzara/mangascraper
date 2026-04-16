@@ -9,11 +9,15 @@ import '../services/api_service.dart';
 class MangaReaderScreen extends StatefulWidget {
   final Chapter chapter;
   final String mangaTitle;
+  final List<Chapter>? allChapters;
+  final int? currentChapterIndex;
 
   const MangaReaderScreen({
     super.key,
     required this.chapter,
     required this.mangaTitle,
+    this.allChapters,
+    this.currentChapterIndex,
   });
 
   @override
@@ -133,7 +137,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: Colors.black87,
+        backgroundColor: const Color(0xFF1D1D1F),
         foregroundColor: Colors.white,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -201,6 +205,10 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
       );
     }
 
+    final hasNextChapter = widget.allChapters != null && 
+                           widget.currentChapterIndex != null &&
+                           widget.currentChapterIndex! < widget.allChapters!.length - 1;
+
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
         if (notification is ScrollUpdateNotification) {
@@ -211,8 +219,13 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
       child: ListView.builder(
         controller: _scrollController,
         cacheExtent: 0, // Don't cache off-screen widgets
-        itemCount: _chapterPages!.pages.length,
+        itemCount: _chapterPages!.pages.length + 1, // +1 for next chapter button
         itemBuilder: (context, index) {
+          // Last item - Next Chapter button
+          if (index == _chapterPages!.pages.length) {
+            return _buildNextChapterButton(hasNextChapter);
+          }
+          
           final page = _chapterPages!.pages[index];
           final isVisible = _visiblePages.contains(index);
           
@@ -225,6 +238,93 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildNextChapterButton(bool hasNextChapter) {
+    if (!hasNextChapter) {
+      return Container(
+        padding: const EdgeInsets.all(48),
+        color: Colors.black,
+        child: const Center(
+          child: Text(
+            'End of Manga',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      );
+    }
+
+    final nextChapter = widget.allChapters![widget.currentChapterIndex! + 1];
+
+    return Container(
+      padding: const EdgeInsets.all(48),
+      color: Colors.black,
+      child: Center(
+        child: Column(
+          children: [
+            const Icon(
+              Icons.check_circle,
+              color: Colors.green,
+              size: 48,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'End of Chapter',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Next: ${nextChapter.displayName}',
+              style: const TextStyle(
+                color: Colors.grey,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => MangaReaderScreen(
+                      chapter: nextChapter,
+                      mangaTitle: widget.mangaTitle,
+                      allChapters: widget.allChapters,
+                      currentChapterIndex: widget.currentChapterIndex! + 1,
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.arrow_forward),
+              label: const Text('Next Chapter'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF1D1D1F),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 16,
+                ),
+                textStyle: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

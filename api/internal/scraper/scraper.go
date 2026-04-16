@@ -11,12 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
-	"sync"
-	_ "time"
-
-	"mangascraper/internal/db"
 
 	"github.com/gocolly/colly/v2"
 )
@@ -27,6 +22,9 @@ type body struct {
 
 var cfClearanceToken string = ""
 var currentUserAgent string = ""
+
+// ValidImageRegex matches valid manga page filenames like "001.webp"
+var ValidImageRegex = regexp.MustCompile(`^\d+\.webp$`)
 
 // GetCfClearanceToken returns the current cf_clearance token
 func GetCfClearanceToken() string {
@@ -64,62 +62,22 @@ type flareSolverrResponse struct {
 	Solution flareSolverrSolution `json:"solution"`
 }
 
-type chapterApiResponse struct {
+// ChapterAPIResponse represents the mangakakalot chapter list API response
+type ChapterAPIResponse struct {
 	Success bool `json:"success"`
 	Data    struct {
 		Pagination struct {
 			Total int `json:"total"`
 		} `json:"pagination"`
 		Chapters []struct {
-			ChapterSlug string `json:"chapter_slug"`
-			ChapterNum  int    `json:"chapter_num"`
+			ChapterSlug string  `json:"chapter_slug"`
+			ChapterNum  float64 `json:"chapter_num"`
 		} `json:"chapters"`
 	} `json:"data"`
 }
 
-type DownloadJob struct {
-	Title string
-	Slug  string
-}
-
-func downloadWorkers(id int, mangaID int, jobs <-chan DownloadJob, wg *sync.WaitGroup) {
-	defer wg.Done() //decrement counter when this job finish
-
-	for job := range jobs {
-		fmt.Printf("Worker %d: processing %s\n", id, job.Slug)
-
-		// Get chapter ID from database
-		chapter, err := db.GetChapterBySlug(mangaID, job.Slug)
-		if err != nil {
-			fmt.Printf("Worker %d: failed to get chapter %s: %v\n", id, job.Slug, err)
-			continue
-		}
-		if chapter == nil {
-			fmt.Printf("Worker %d: chapter %s not found in database\n", id, job.Slug)
-			continue
-		}
-
-		// Mark chapter as downloading
-		if err := db.MarkChapterDownloading(chapter.ChapterID); err != nil {
-			fmt.Printf("Worker %d: failed to mark chapter as downloading: %v\n", id, err)
-		}
-
-		// Download images and save pages to database
-		err = DownloadImagesWithDB(job.Title, job.Slug, chapter.ChapterID)
-		if err != nil {
-			// Mark chapter as error
-			db.MarkChapterError(chapter.ChapterID, err.Error())
-			fmt.Printf("Worker %d: error downloading %s: %v\n", id, job.Slug, err)
-		} else {
-			// Mark chapter as downloaded
-			db.MarkChapterDownloaded(chapter.ChapterID)
-			fmt.Printf("Worker %d: completed %s\n", id, job.Slug)
-		}
-	}
-}
-
+// GetCookies retrieves Cloudflare clearance cookies from FlareSolverr
 func GetCookies() error {
-	// FlareSolverr API request
 	reqBody := flareSolverrRequest{
 		Cmd:               "request.get",
 		URL:               "https://www.mangakakalot.gg/manga/blue-lock",
@@ -133,12 +91,10 @@ func GetCookies() error {
 	}
 
 	resp, err := http.Post("http://flaresolverr:8191/v1", "application/json", bytes.NewReader(jsonData))
-
 	if err != nil {
 		fmt.Printf("err sending POST to fs %s\n", err)
 		return err
 	}
-
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
@@ -151,15 +107,13 @@ func GetCookies() error {
 		return fmt.Errorf("error decoding flareSolverr response: %w", err)
 	}
 
-	// Convert cookies to map
 	cookies := make(map[string]string)
 	for _, c := range result.Solution.Cookies {
 		cookies[c.Name] = c.Value
 	}
 
-	// Check for cf_clearance specifically
 	if cfClearance, ok := cookies["cf_clearance"]; ok {
-		fmt.Println("✓ cf_clearance retrieved:", cfClearance[:50]+"...")
+		fmt.Println("Retrieved cf clearance token", cfClearance[:50]+"...")
 		cfClearanceToken = cfClearance
 		fmt.Printf("Token stored successfully\n")
 	} else {
@@ -173,76 +127,35 @@ func GetCookies() error {
 	return nil
 }
 
-//todo: make thi
-
-func DownloadManga(title string) error {
-	// 1. Save manga to database
-	mangaID, err := db.SaveManga(title, title)
-	if err != nil {
-		return fmt.Errorf("failed to save manga: %w", err)
-	}
-	fmt.Printf("Manga '%s' saved with ID: %d\n", title, mangaID)
-
-	err = GetCookies()
-	if err != nil {
-		fmt.Println("Failed to get cf clearance token")
-		return err
-	}
-
-	// 2. Get chapter list and save chapters to database
-	slugs, err := GetChapterListWithDB(mangaID, title)
-	if err != nil {
-		return fmt.Errorf("failed to get chapter list: %w", err)
-	}
-
-	if len(slugs) == 0 {
-		return fmt.Errorf("no chapter found for %s", title)
-	}
-
-	fmt.Printf("Found %d chapters for %s, starting download . . . \n", len(slugs), title)
-
-	BeginJobPool(title, mangaID, slugs, 100)
-
-	fmt.Printf("Finish download %s\n", title)
-
-	return nil
-}
-
-var validImageRegex = regexp.MustCompile(`^\d+\.webp$`)
-
-func DownloadImages(title string, slug string) { //this func should take in title, and list of chapters. then you spawn goroutines to parallel download
+// DownloadImages downloads all images for a single chapter without touching the database
+func DownloadImages(title string, slug string) {
 	downloadDir := filepath.Join("downloads", title, slug)
 
-	err := os.MkdirAll(downloadDir, 0755)
-
-	if err != nil {
+	if err := os.MkdirAll(downloadDir, 0755); err != nil {
 		fmt.Printf("Problem creating dir, %v", err)
 	}
 
 	fmt.Printf("Current clearance token is %s\n", cfClearanceToken)
 
 	c := colly.NewCollector()
-
 	imgCollector := colly.NewCollector()
 
 	imgCollector.OnRequest(func(r *colly.Request) {
 		r.Headers.Set("Referer", "https://www.mangakakalot.gg/")
 		fmt.Println("Downloading:", r.URL.String())
-
 	})
 
 	imgCollector.OnResponse(func(r *colly.Response) {
 		fmt.Println("Response received")
 		filename := filepath.Base(r.Request.URL.Path)
 
-		if !validImageRegex.MatchString(filename) {
+		if !ValidImageRegex.MatchString(filename) {
 			fmt.Printf("Skipping non-manga image: %s\n", filename)
 			return
 		}
 
-		filepath := filepath.Join(downloadDir, filename)
-		err := r.Save(filepath)
-		if err != nil {
+		fpath := filepath.Join(downloadDir, filename)
+		if err := r.Save(fpath); err != nil {
 			fmt.Printf("Error saving image %v\n", err)
 		} else {
 			fmt.Printf("Saved: %s\n", filename)
@@ -250,22 +163,17 @@ func DownloadImages(title string, slug string) { //this func should take in titl
 	})
 
 	c.OnRequest(func(r *colly.Request) {
-
 		r.Headers.Set("Cookie", "cf_clearance="+cfClearanceToken)
 		r.Headers.Set("Referer", "https://www.mangakakalot.gg")
-		r.Headers.Set("User-Agent", ""+currentUserAgent)
-
+		r.Headers.Set("User-Agent", currentUserAgent)
 	})
 
 	c.OnResponse(func(r *colly.Response) {
-
 		contentType := r.Headers.Get("Content-Type")
-
 		if strings.Contains(contentType, "image/webp") {
 			filename := filepath.Base(r.Request.URL.Path)
 			r.Save("downloads/" + filename)
 		}
-
 	})
 
 	c.OnHTML("img", func(e *colly.HTMLElement) {
@@ -273,66 +181,36 @@ func DownloadImages(title string, slug string) { //this func should take in titl
 		fmt.Println("Found image:", imgURL)
 		imgCollector.Visit(imgURL)
 	})
+
 	fmt.Println(slug)
 	fmt.Printf(title)
 	linkToDownloadFrom := fmt.Sprintf("https://www.mangakakalot.gg/manga/%s/%s", title, slug)
-	err = c.Visit(linkToDownloadFrom)
-	if err != nil {
+	if err := c.Visit(linkToDownloadFrom); err != nil {
 		fmt.Printf("Error visiting page: %v\n", err)
 	}
-
-	//on succesful inserts
-
 }
 
-func BeginJobPool(title string, mangaID int, slugs []string, numWorkers int) {
-	jobs := make(chan DownloadJob, len(slugs))
-	var wg sync.WaitGroup
-
-	for w := 1; w <= numWorkers; w++ {
-		wg.Add(1)
-		go downloadWorkers(w, mangaID, jobs, &wg)
-	}
-
-	for _, slug := range slugs {
-		jobs <- DownloadJob{Title: title, Slug: slug}
-	}
-
-	close(jobs)
-
-	wg.Wait()
-
-}
-
+// GetChapterList fetches the list of chapter slugs from the mangakakalot API
 func GetChapterList(title string) ([]string, error) {
-	var chapterApi string = fmt.Sprintf("https://www.mangakakalot.gg/api/manga/%s/chapters?limit=999", title)
+	chapterApi := fmt.Sprintf("https://www.mangakakalot.gg/api/manga/%s/chapters?limit=999", title)
 	fmt.Printf("Chapter API is %s", chapterApi)
 	resp, err := http.Get(chapterApi)
 	if err != nil {
 		fmt.Println("err getting chapter amount")
 	}
+	defer resp.Body.Close()
 
-	//add interceptor middleware for 401 unauthorized, call GetCookies and try again?
-	//is there any golang native way to intercept status codes? like attaching interceptor to httpClient
-
-	defer resp.Body.Close() //dont forget do this ree amza
-
-	var clResponse chapterApiResponse
-
-	err = json.NewDecoder(resp.Body).Decode(&clResponse)
+	var clResponse ChapterAPIResponse
+	_ = json.NewDecoder(resp.Body).Decode(&clResponse)
 
 	fmt.Printf("Amount of chapter is %d", clResponse.Data.Pagination.Total)
 
 	chapterApiSlug := fmt.Sprintf("https://www.mangakakalot.gg/api/manga/%s/chapters?limit=%d", title, clResponse.Data.Pagination.Total)
-	//redundant, just do limit = -1 LOL
 	resp, err = http.Get(chapterApiSlug)
-
 	defer resp.Body.Close()
 
-	var csResponse chapterApiResponse
-
-	err = json.NewDecoder(resp.Body).Decode(&csResponse)
-
+	var csResponse ChapterAPIResponse
+	_ = json.NewDecoder(resp.Body).Decode(&csResponse)
 	if err != nil {
 		fmt.Println("Fail to decode")
 	}
@@ -344,129 +222,9 @@ func GetChapterList(title string) ([]string, error) {
 
 	fmt.Println(slugs)
 	return slugs, nil
-
 }
 
-// GetChapterListWithDB fetches chapters and saves them to the database
-func GetChapterListWithDB(mangaID int, title string) ([]string, error) {
-	var chapterApi string = fmt.Sprintf("https://www.mangakakalot.gg/api/manga/%s/chapters?limit=999", title)
-	fmt.Printf("Chapter API is %s\n", chapterApi)
-	resp, err := http.Get(chapterApi)
-	if err != nil {
-		return nil, fmt.Errorf("error getting chapter amount: %w", err)
-	}
-	defer resp.Body.Close()
-
-	var clResponse chapterApiResponse
-	if err := json.NewDecoder(resp.Body).Decode(&clResponse); err != nil {
-		return nil, fmt.Errorf("error decoding chapter list: %w", err)
-	}
-
-	fmt.Printf("Amount of chapter is %d\n", clResponse.Data.Pagination.Total)
-
-	chapterApiSlug := fmt.Sprintf("https://www.mangakakalot.gg/api/manga/%s/chapters?limit=%d", title, clResponse.Data.Pagination.Total)
-	resp, err = http.Get(chapterApiSlug)
-	if err != nil {
-		return nil, fmt.Errorf("error getting chapter list: %w", err)
-	}
-	defer resp.Body.Close()
-
-	var csResponse chapterApiResponse
-	if err := json.NewDecoder(resp.Body).Decode(&csResponse); err != nil {
-		return nil, fmt.Errorf("error decoding chapters: %w", err)
-	}
-
-	// Sort chapters by chapter_num ascending (earlier chapters first)
-	sort.Slice(csResponse.Data.Chapters, func(i, j int) bool {
-		return csResponse.Data.Chapters[i].ChapterNum < csResponse.Data.Chapters[j].ChapterNum
-	})
-
-	var slugs []string
-	fmt.Println("Saving chapters to database...")
-	for _, chapter := range csResponse.Data.Chapters {
-		slugs = append(slugs, chapter.ChapterSlug)
-		// Save chapter to database with chapter number
-		_, err := db.SaveChapter(mangaID, chapter.ChapterSlug, chapter.ChapterNum)
-		if err != nil {
-			fmt.Printf("Warning: failed to save chapter %s: %v\n", chapter.ChapterSlug, err)
-		}
-	}
-
-	fmt.Printf("Total chapters: %d\n", len(slugs))
-	return slugs, nil
-}
-
-// DownloadImagesWithDB downloads images and saves page records to the database
-func DownloadImagesWithDB(title string, slug string, chapterID int) error {
-	downloadDir := filepath.Join("downloads", title, slug)
-
-	if err := os.MkdirAll(downloadDir, 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
-	}
-
-	c := colly.NewCollector()
-	imgCollector := colly.NewCollector()
-
-	imgCollector.OnRequest(func(r *colly.Request) {
-		r.Headers.Set("Referer", "https://www.mangakakalot.gg/")
-	})
-
-	imgCollector.OnResponse(func(r *colly.Response) {
-		filename := filepath.Base(r.Request.URL.Path)
-
-		if !validImageRegex.MatchString(filename) {
-			fmt.Printf("Skipping non-manga image: %s\n", filename)
-			return
-		}
-
-		filePathLocal := filepath.Join(downloadDir, filename)
-		// The URL path: /{title}/{slug}/{filename}
-		filePathURL := "/" + title + "/" + slug + "/" + filename
-
-		// Save page to database with pending status
-		pageID, err := db.SavePage(chapterID, r.Request.URL.String(), filename, filePathURL)
-		if err != nil {
-			fmt.Printf("Error saving page to DB: %v\n", err)
-			return
-		}
-
-		// Mark page as downloading
-		if err := db.MarkPageDownloading(pageID); err != nil {
-			fmt.Printf("Error marking page as downloading: %v\n", err)
-		}
-
-		// Save the file
-		if err := r.Save(filePathLocal); err != nil {
-			fmt.Printf("Error saving image %v\n", err)
-			// Mark page as error
-			db.MarkPageError(pageID, err.Error())
-		} else {
-			fmt.Printf("Saved: %s\n", filename)
-			// Mark page as downloaded
-			db.MarkPageDownloaded(pageID)
-		}
-	})
-
-	c.OnRequest(func(r *colly.Request) {
-		r.Headers.Set("Cookie", "cf_clearance="+cfClearanceToken)
-		r.Headers.Set("Referer", "https://www.mangakakalot.gg")
-		r.Headers.Set("User-Agent", ""+currentUserAgent)
-	})
-
-	c.OnHTML("img", func(e *colly.HTMLElement) {
-		imgURL := e.Attr("src")
-		imgCollector.Visit(imgURL)
-	})
-
-	linkToDownloadFrom := fmt.Sprintf("https://www.mangakakalot.gg/manga/%s/%s", title, slug)
-	if err := c.Visit(linkToDownloadFrom); err != nil {
-		return fmt.Errorf("error visiting page: %w", err)
-	}
-
-	return nil
-}
-
-// helper function
+// min returns the smaller of a or b
 func min(a, b int) int {
 	if a < b {
 		return a
