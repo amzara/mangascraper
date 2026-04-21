@@ -1,0 +1,2 @@
+# Mark Flutter/Dart app as vendored so GitHub detects Go as the primary language
+app/** linguist-vendored
