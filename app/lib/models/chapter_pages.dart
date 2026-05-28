@@ -19,7 +19,7 @@ class ChapterPages {
     return ChapterPages(
       chapterId: json['chapter_id'] as int,
       chapter: Chapter.fromJson(chapterJson),
-      pages: pagesJson.map((p) => Page.fromJson(p)).toList(),
+      pages: pagesJson.map((p) => Page.fromJson(p as Map<String, dynamic>)).toList(),
     );
   }
 

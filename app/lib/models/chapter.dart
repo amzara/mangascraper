@@ -23,11 +23,11 @@ class Chapter {
     return Chapter(
       chapterId: json['ChapterID'] as int,
       mangaId: json['MangaID'] as int,
-      chapterSlug: json['ChapterSlug'] as String,
+      chapterSlug: (json['ChapterSlug'] as String?) ?? '',
       chapterNum: (json['ChapterNum'] as num?)?.toDouble() ?? 0.0,
-      status: json['Status'] as String,
+      status: (json['Status'] as String?) ?? 'pending',
       errorMessage: json['ErrorMessage'] as String?,
-      createdAt: DateTime.parse(json['CreatedAt'] as String),
+      createdAt: DateTime.parse((json['CreatedAt'] as String?) ?? DateTime.now().toIso8601String()),
       updatedAt: json['UpdatedAt'] != null
           ? DateTime.parse(json['UpdatedAt'] as String)
           : null,

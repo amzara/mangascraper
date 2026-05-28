@@ -86,7 +86,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
 
   void _preloadAdjacentPages(int currentIndex) {
     if (_chapterPages == null) return;
-    
+
     // Preload next 3 and previous 1 pages
     final pagesToPreload = [
       currentIndex - 1,
@@ -94,14 +94,15 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
       currentIndex + 2,
       currentIndex + 3,
     ];
-    
+
     for (final index in pagesToPreload) {
-      if (index >= 0 && 
-          index < _chapterPages!.pages.length && 
+      if (index >= 0 &&
+          index < _chapterPages!.pages.length &&
           !_preloadedPages.contains(index)) {
         _preloadedPages.add(index);
         final page = _chapterPages!.pages[index];
-        
+        debugPrint('[MangaReader] Preloading page $index: ${page.imageFullUrl}');
+
         // Preload using CachedNetworkImage provider
         final provider = CachedNetworkImageProvider(
           page.imageFullUrl,
@@ -364,34 +365,37 @@ class _MangaPageImage extends StatelessWidget {
               child: CircularProgressIndicator(color: Colors.white54),
             ),
           ),
-          errorWidget: (context, url, error) => Container(
-            height: MediaQuery.of(context).size.width * 1.4,
-            color: Colors.grey[900],
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.error_outline,
-                  color: Colors.red,
-                  size: 48,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Failed to load\n${page.fileName}',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white),
-                ),
-                if (!page.isDownloaded)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 8),
-                    child: Text(
-                      'Image not yet downloaded',
-                      style: TextStyle(color: Colors.orange, fontSize: 12),
-                    ),
+          errorWidget: (context, url, error) {
+            debugPrint('[MangaReader] Image load error for ${page.fileName}: $error (url: $url)');
+            return Container(
+              height: MediaQuery.of(context).size.width * 1.4,
+              color: Colors.grey[900],
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    color: Colors.red,
+                    size: 48,
                   ),
-              ],
-            ),
-          ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Failed to load\n${page.fileName}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  if (!page.isDownloaded)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Text(
+                        'Image not yet downloaded',
+                        style: TextStyle(color: Colors.orange, fontSize: 12),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
           imageBuilder: (context, imageProvider) {
             return Image(
               image: imageProvider,

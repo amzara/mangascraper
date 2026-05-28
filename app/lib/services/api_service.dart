@@ -59,19 +59,38 @@ class ApiService {
 
   Future<ChapterPages> getChapterPages(int chapterId) async {
     try {
+      final uri = Uri.parse('$baseUrl/api/chapter/$chapterId');
+      print('[ApiService] Fetching chapter pages from: $uri');
       final response = await http.get(
-        Uri.parse('$baseUrl/api/chapter/$chapterId'),
+        uri,
         headers: {'Content-Type': 'application/json'},
       );
 
+      print('[ApiService] Response status: ${response.statusCode}');
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final body = response.body;
+        print('[ApiService] Raw response body: $body');
+        final data = jsonDecode(body);
+        print('[ApiService] Response data keys: ${data.keys.toList()}');
         if (data['success'] == true) {
-          return ChapterPages.fromJson(data);
+          print('[ApiService] chapter json: ${data['chapter']}');
+          print('[ApiService] pages count: ${(data['pages'] as List?)?.length}');
+          if (data['pages'] != null && (data['pages'] as List).isNotEmpty) {
+            print('[ApiService] first page json: ${(data['pages'] as List).first}');
+          }
+          try {
+            return ChapterPages.fromJson(data);
+          } catch (parseError) {
+            print('[ApiService] JSON parse error: $parseError');
+            print('[ApiService] Full data that failed: $data');
+            rethrow;
+          }
         }
       }
       throw Exception('Failed to load chapter pages: ${response.statusCode}');
-    } catch (e) {
+    } catch (e, stack) {
+      print('[ApiService] Error fetching chapter pages: $e');
+      print('[ApiService] Stack trace: $stack');
       throw Exception('Error fetching chapter pages: $e');
     }
   }

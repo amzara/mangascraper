@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class Page {
@@ -27,12 +28,12 @@ class Page {
     return Page(
       pageId: json['PageID'] as int,
       chapterId: json['ChapterID'] as int,
-      imageUrl: json['ImageURL'] as String,
-      fileName: json['FileName'] as String,
+      imageUrl: (json['ImageUrl'] as String?) ?? '',
+      fileName: (json['FileName'] as String?) ?? 'unknown',
       filePath: json['FilePath'] as String? ?? '',
       status: json['Status'] as String? ?? 'pending',
       errorMessage: json['ErrorMessage'] as String?,
-      createdAt: DateTime.parse(json['CreatedAt'] as String),
+      createdAt: DateTime.parse((json['CreatedAt'] as String?) ?? DateTime.now().toIso8601String()),
       downloadedAt: json['DownloadedAt'] != null
           ? DateTime.parse(json['DownloadedAt'] as String)
           : null,
